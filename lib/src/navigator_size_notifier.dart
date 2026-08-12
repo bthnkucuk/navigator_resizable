@@ -52,6 +52,20 @@ class NavigatorSizeNotifier extends ChangeNotifier
     return _lastReportedValidValue ?? _defaultPreferredSize;
   }
 
+  /// Whether a change to [route]'s content size can change [value].
+  ///
+  /// While a transition is running, either of the two routes can be an
+  /// endpoint of the interpolation, so nothing is ruled out. Once settled,
+  /// only the current route contributes; the ones below it are still mounted
+  /// with the default `maintainState: true` and keep laying out, but they
+  /// cannot affect what is displayed.
+  bool affectsPreferredSize(Route<dynamic> route) {
+    if (_interpolation != null || _currentRoute == null) {
+      return true;
+    }
+    return route == _currentRoute;
+  }
+
   @override
   void dispose() {
     _updateInterpolation(null);

@@ -216,7 +216,14 @@ class _NavigatorResizableState extends State<NavigatorResizable> {
   /// [_RenderNavigatorResizable] is laid out in this frame so that it can.
   void scheduleMeasurement(_RenderRouteContentBoundary boundary) {
     pendingMeasurements.add(boundary);
-    renderNavigatorResizable?.requestRelayout();
+    // A route below the current one cannot change the size this widget
+    // displays, so laying out again would be pure waste. Its new content size
+    // still has to be recorded, and it will be: the Overlay makes every
+    // boundary a relayout boundary, so the pipeline lays it out on its own and
+    // `performLayout` reports the size and dequeues it.
+    if (_preferredSizeNotifier.affectsPreferredSize(boundary.route)) {
+      renderNavigatorResizable?.requestRelayout();
+    }
   }
 
   void didRouteContentSizeChange(ModalRoute<dynamic> route, Size contentSize) {
@@ -480,36 +487,32 @@ class ResizableNavigatorRouteContentBoundary
 
   @override
   RenderObject createRenderObject(BuildContext context) {
-    final parentRoute = ModalRoute.of(context)!;
-    final navigatorResizable = _NavigatorResizableState.of(context);
     return _RenderRouteContentBoundary(
-      state: navigatorResizable,
-      didRouteContentSizeChangeCallback: (size) {
-        navigatorResizable.didRouteContentSizeChange(parentRoute, size);
-      },
+      state: _NavigatorResizableState.of(context),
+      route: ModalRoute.of(context)!,
     );
   }
 
   @override
   void updateRenderObject(BuildContext context, RenderObject renderObject) {
-    final parentRoute = ModalRoute.of(context)!;
-    final navigatorResizable = _NavigatorResizableState.of(context);
     (renderObject as _RenderRouteContentBoundary)
-      ..state = navigatorResizable
-      ..didRouteContentSizeChangeCallback = (size) {
-        navigatorResizable.didRouteContentSizeChange(parentRoute, size);
-      };
+      ..state = _NavigatorResizableState.of(context)
+      ..route = ModalRoute.of(context)!;
   }
 }
 
 class _RenderRouteContentBoundary extends RenderPositionedBox {
   _RenderRouteContentBoundary({
     required _NavigatorResizableState state,
-    required this.didRouteContentSizeChangeCallback,
+    required this.route,
   }) : _state = state,
        super(alignment: Alignment.topLeft);
 
-  ValueSetter<Size> didRouteContentSizeChangeCallback;
+  /// The route whose content this boundary measures.
+  ///
+  /// Only read to decide whether a measurement can affect the displayed size,
+  /// and to report the size, so it needs no invalidation when it changes.
+  ModalRoute<dynamic> route;
 
   _NavigatorResizableState _state;
   // ignore: avoid_setters_without_getters
@@ -571,7 +574,8 @@ class _RenderRouteContentBoundary extends RenderPositionedBox {
     _state.pendingMeasurements.remove(this);
     super.performLayout();
     if (child?.size case final childSize?) {
-      didRouteContentSizeChangeCallback(
+      _state.didRouteContentSizeChange(
+        route,
         // Ensure the size object is immutable.
         Size.copy(childSize),
       );
