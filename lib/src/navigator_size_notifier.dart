@@ -25,6 +25,15 @@ class NavigatorSizeNotifier extends ChangeNotifier
     if (newValue != null) {
       _currentRoute = null;
     }
+    // Swapping the interpolation changes what [value] reports, so say so.
+    //
+    // This matters when a gesture drives the transition: an
+    // AnimationController notifies its listeners from the value setter before
+    // it reports the status change, so the status listener that installs this
+    // interpolation runs after the notification it should have reacted to.
+    // Without this the render box is only laid out because something
+    // unrelated in the route subtree happens to dirty it in the same frame.
+    _notifyIfChanged();
   }
 
   void _updateCurrentRoute(Route<dynamic>? newRoute) {
@@ -135,16 +144,36 @@ class NavigatorSizeNotifier extends ChangeNotifier
     }
   }
 
+  /// Reads the content size of the route that is being left behind.
+  ///
+  /// The route is looked up on every tick rather than captured, so that a
+  /// content size change there is picked up while the transition is still
+  /// running, exactly as the other end of the interpolation already is.
+  ///
+  /// Falls back to [fallback], the size that was displayed when the transition
+  /// started, when there is no settled route to read, which happens when a
+  /// transition starts while another one is still in flight, or when that
+  /// route has not been measured yet.
+  ///
+  /// Must be called before [_updateInterpolation], which clears the current
+  /// route.
+  ValueGetter<Size?> _outgoingSize(Size fallback) {
+    final outgoingRoute = _currentRoute;
+    return () {
+      final size = _routeContentSizes[outgoingRoute];
+      return size != null && size.isFinite ? size : fallback;
+    };
+  }
+
   void _startUserGestureTransition(
     Route<dynamic> targetRoute,
     Animation<double> animation,
   ) {
     assert(animation.isForwardOrCompleted);
-    final initialSize = _lastReportedValidValue!;
     _updateInterpolation(
       _LazySizeTween(
         start: () => _routeContentSizes[targetRoute],
-        end: () => initialSize,
+        end: _outgoingSize(_lastReportedValidValue!),
       ).animate(animation),
     );
   }
@@ -154,10 +183,9 @@ class NavigatorSizeNotifier extends ChangeNotifier
     Animation<double> animation,
   ) {
     assert(animation.isForwardOrCompleted);
-    final initialSize = _lastReportedValidValue!;
     _updateInterpolation(
       _LazySizeTween(
-        start: () => initialSize,
+        start: _outgoingSize(_lastReportedValidValue!),
         end: () => _routeContentSizes[targetRoute],
       ).chain(CurveTween(curve: interpolationCurve)).animate(animation),
     );
@@ -173,7 +201,7 @@ class NavigatorSizeNotifier extends ChangeNotifier
       _updateInterpolation(
         _LazySizeTween(
           start: () => _routeContentSizes[targetRoute],
-          end: () => initialSize,
+          end: _outgoingSize(initialSize),
         ).chain(CurveTween(curve: interpolationCurve)).animate(animation),
       );
     } else {
