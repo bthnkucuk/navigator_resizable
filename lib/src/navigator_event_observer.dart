@@ -391,7 +391,19 @@ class NavigatorEventObserverState extends State<NavigatorEventObserver> {
     assert(route == _lastSettledRoute);
     final destinationRoute = committed ? _previousRouteOf[route]! : route;
     if (!route.animation!.isAnimating) {
+      // The gesture ended without animating. This happens when it is released
+      // without ever being dragged, because handleStartBackGesture leaves the
+      // route's controller completed, and when a committed gesture pops a
+      // route that has no transition duration.
+      //
+      // The gesture is over either way, so record that here as well. Skipping
+      // it used to leave the observer believing a back gesture was still in
+      // progress, which permanently suppressed every later gesture driven
+      // transition, and left the settled route pointing at the route that was
+      // just popped.
       assert(destinationRoute.isCurrent);
+      _lastSettledRoute = destinationRoute;
+      _isAndroidBackGestureInProgress = false;
       _notifyListeners((it) => it.didEndTransition(destinationRoute));
       return;
     }
