@@ -247,8 +247,13 @@ class _InheritedNavigatorResizable extends InheritedWidget {
 
   final _NavigatorResizableState state;
 
+  // The state object is created once per element and never replaced, so
+  // dependents can never observe a different value. Notifying them would
+  // rebuild every route content boundary for nothing. Everything that does
+  // change is delivered through the preferred size listenable instead.
   @override
-  bool updateShouldNotify(_InheritedNavigatorResizable oldWidget) => true;
+  bool updateShouldNotify(_InheritedNavigatorResizable oldWidget) =>
+      state != oldWidget.state;
 }
 
 class _RenderNavigatorResizableWidget extends SingleChildRenderObjectWidget {

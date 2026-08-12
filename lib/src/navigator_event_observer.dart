@@ -450,8 +450,13 @@ class _InheritedRouteTransitionObserver extends InheritedWidget {
 
   final NavigatorEventObserverState state;
 
+  // The state object is created once per element and never replaced, so
+  // dependents can never observe a different value. Notifying them would
+  // rebuild the whole nested Navigator, and with it every route in the stack,
+  // on every rebuild of the ancestor widget.
   @override
-  bool updateShouldNotify(_) => true;
+  bool updateShouldNotify(_InheritedRouteTransitionObserver oldWidget) =>
+      state != oldWidget.state;
 }
 
 /// A mixin for [TransitionRoute]s that notifies the ancestor
