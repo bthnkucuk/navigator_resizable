@@ -11,13 +11,28 @@ class NavigatorSizeNotifier extends ChangeNotifier
     with NavigatorEventListener
     implements ValueListenable<Size> {
   NavigatorSizeNotifier({
-    required this.interpolationCurve,
-  });
+    required Curve interpolationCurve,
+  }) : _interpolationCurve = interpolationCurve;
 
   final _routeContentSizes = <Route<dynamic>, Size>{};
-  final Curve interpolationCurve;
   Animation<Size?>? _interpolation;
   Route<dynamic>? _currentRoute;
+
+  /// The curve applied to the size interpolation during a route transition.
+  Curve get interpolationCurve => _interpolationCurve;
+  Curve _interpolationCurve;
+  set interpolationCurve(Curve value) {
+    if (value == _interpolationCurve) return;
+    _interpolationCurve = value;
+    _notifyIfChanged();
+  }
+
+  /// Reads [interpolationCurve] on every tick instead of capturing it when a
+  /// transition starts, so that a new curve takes effect immediately, even
+  /// while a transition is already running.
+  late final Curve _liveInterpolationCurve = _LiveCurve(
+    () => _interpolationCurve,
+  );
 
   void _updateInterpolation(Animation<Size?>? newValue) {
     _interpolation?.removeListener(_notifyIfChanged);
@@ -187,7 +202,7 @@ class NavigatorSizeNotifier extends ChangeNotifier
       _LazySizeTween(
         start: _outgoingSize(_lastReportedValidValue!),
         end: () => _routeContentSizes[targetRoute],
-      ).chain(CurveTween(curve: interpolationCurve)).animate(animation),
+      ).chain(CurveTween(curve: _liveInterpolationCurve)).animate(animation),
     );
   }
 
@@ -202,7 +217,7 @@ class NavigatorSizeNotifier extends ChangeNotifier
         _LazySizeTween(
           start: () => _routeContentSizes[targetRoute],
           end: _outgoingSize(initialSize),
-        ).chain(CurveTween(curve: interpolationCurve)).animate(animation),
+        ).chain(CurveTween(curve: _liveInterpolationCurve)).animate(animation),
       );
     } else {
       // In this case, a pop transition has started in the middle of
@@ -266,4 +281,15 @@ Size _lerpEndSize(Size ss, Size st, double t) {
     (st.width - (1 - t) * ss.width) / t,
     (st.height - (1 - t) * ss.height) / t,
   );
+}
+
+/// A [Curve] that delegates to whichever curve [get] returns at the moment it
+/// is asked, rather than to one captured when it was created.
+class _LiveCurve extends Curve {
+  const _LiveCurve(this.get);
+
+  final ValueGetter<Curve> get;
+
+  @override
+  double transformInternal(double t) => get().transform(t);
 }

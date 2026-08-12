@@ -192,6 +192,12 @@ class _NavigatorResizableState extends State<NavigatorResizable> {
   }
 
   @override
+  void didUpdateWidget(NavigatorResizable oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _preferredSizeNotifier.interpolationCurve = widget.interpolationCurve;
+  }
+
+  @override
   void dispose() {
     _preferredSizeNotifier.dispose();
     super.dispose();
