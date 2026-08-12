@@ -40,8 +40,18 @@ abstract class _BaseResizableMaterialPageRoute<T> extends PageRoute<T>
       // PredictiveBackFullscreenPageTransitionsBuilder is incompatible with
       // NavigatorResizable's size transition, so we use the older
       // FadeForwardsPageTransitionsBuilder for Android instead.
+      //
+      // Its background defaults to ColorScheme.surface, which it paints behind
+      // the outgoing route for the duration of the transition. In a full
+      // screen navigator that backdrop is invisible, but this navigator is
+      // clipped to the size of the current route content, so it shows up as an
+      // opaque rectangle in the gap between the two differently sized routes.
+      // Keep it transparent and let whatever is behind the navigator show
+      // through instead.
       TargetPlatform.android =>
-        const FadeForwardsPageTransitionsBuilder().buildTransitions(
+        const FadeForwardsPageTransitionsBuilder(
+          backgroundColor: Colors.transparent,
+        ).buildTransitions(
           this,
           context,
           animation,

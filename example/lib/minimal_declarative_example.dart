@@ -83,8 +83,9 @@ class _ExampleHomeState extends State<ExampleHome> {
                 child: Center(
                   child: Material(
                     elevation: 2,
-                    color: Colors.white,
-                    clipBehavior: Clip.antiAlias,
+                    type: MaterialType.transparency,
+                    color: Colors.transparent,
+                    clipBehavior: Clip.hardEdge,
                     borderRadius: BorderRadius.circular(8),
                     // IMPORTANT: Wrap the Navigator in a NavigatorResizable.
                     child: NavigatorResizable(
