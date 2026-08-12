@@ -233,56 +233,27 @@ class _AnimationLessAndroidBackGestureHandlerState
 /// Almost identical to [PageRouteBuilder] but specialized for compatibility
 /// with [NavigatorResizable].
 @optionalTypeArgs
-class ResizablePageRouteBuilder<T> extends PageRoute<T>
+class ResizablePageRouteBuilder<T> extends PageRouteBuilder<T>
     with ObservableRouteMixin<T> {
   /// Creates a route that delegates to builder callbacks.
+  ///
+  /// Takes the same parameters as [PageRouteBuilder], except that
+  /// [transitionsBuilder] is required.
   ResizablePageRouteBuilder({
     super.settings,
     super.requestFocus,
-    required this.pageBuilder,
-    required this.transitionsBuilder,
-    this.transitionDuration = const Duration(milliseconds: 300),
-    this.reverseTransitionDuration = const Duration(milliseconds: 300),
-    this.opaque = true,
-    this.barrierDismissible = false,
-    this.barrierColor,
-    this.barrierLabel,
-    this.maintainState = true,
+    required super.pageBuilder,
+    required super.transitionsBuilder,
+    super.transitionDuration,
+    super.reverseTransitionDuration,
+    super.opaque,
+    super.barrierDismissible,
+    super.barrierColor,
+    super.barrierLabel,
+    super.maintainState,
     super.fullscreenDialog,
-    super.allowSnapshotting = true,
+    super.allowSnapshotting,
   });
-
-  /// Used build the route's primary contents.
-  ///
-  /// See [ModalRoute.buildPage] for complete definition of the parameters.
-  final RoutePageBuilder pageBuilder;
-
-  /// Used to build the route's transitions.
-  ///
-  /// See [ModalRoute.buildTransitions] for complete definition
-  /// of the parameters.
-  final RouteTransitionsBuilder transitionsBuilder;
-
-  @override
-  final Duration transitionDuration;
-
-  @override
-  final Duration reverseTransitionDuration;
-
-  @override
-  final bool opaque;
-
-  @override
-  final bool barrierDismissible;
-
-  @override
-  final Color? barrierColor;
-
-  @override
-  final String? barrierLabel;
-
-  @override
-  final bool maintainState;
 
   @override
   Widget buildPage(
@@ -290,19 +261,11 @@ class ResizablePageRouteBuilder<T> extends PageRoute<T>
     Animation<double> animation,
     Animation<double> secondaryAnimation,
   ) {
+    // The only thing this class adds to PageRouteBuilder: the content has to
+    // be wrapped so that the ancestor NavigatorResizable can measure it.
     return ResizableNavigatorRouteContentBoundary(
       child: pageBuilder(context, animation, secondaryAnimation),
     );
-  }
-
-  @override
-  Widget buildTransitions(
-    BuildContext context,
-    Animation<double> animation,
-    Animation<double> secondaryAnimation,
-    Widget child,
-  ) {
-    return transitionsBuilder(context, animation, secondaryAnimation, child);
   }
 }
 

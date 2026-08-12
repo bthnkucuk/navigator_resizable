@@ -290,20 +290,14 @@ class _RenderNavigatorResizableWidget extends SingleChildRenderObjectWidget {
   final _NavigatorResizableState state;
   final ValueListenable<Size> preferredSize;
 
+  // Both fields are created once per State and never replaced, so there is
+  // nothing for updateRenderObject to do.
   @override
   RenderObject createRenderObject(BuildContext context) {
     return _RenderNavigatorResizable(
       state: state,
       preferredSize: preferredSize,
     );
-  }
-
-  @override
-  void updateRenderObject(
-    BuildContext context,
-    _RenderNavigatorResizable renderObject,
-  ) {
-    renderObject.preferredSize = preferredSize;
   }
 }
 
@@ -333,14 +327,7 @@ class _RenderNavigatorResizable extends RenderAligningShiftedBox {
   /// [_preferredSize] and the offset should be always [Offset.zero].
   late Rect _visibleBounds;
 
-  ValueListenable<Size> _preferredSize;
-  // ignore: avoid_setters_without_getters
-  set preferredSize(ValueListenable<Size> value) {
-    if (value != _preferredSize) {
-      _preferredSize.removeListener(_onPreferredSizeChanged);
-      _preferredSize = value..addListener(_onPreferredSizeChanged);
-    }
-  }
+  final ValueListenable<Size> _preferredSize;
 
   void _onPreferredSizeChanged() => requestRelayout();
 
