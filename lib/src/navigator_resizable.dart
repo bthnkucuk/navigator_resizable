@@ -164,6 +164,25 @@ class NavigatorResizable extends StatefulWidget {
 class _NavigatorResizableState extends State<NavigatorResizable> {
   late final NavigatorSizeNotifier _preferredSizeNotifier;
 
+  /// The render box created by [_RenderNavigatorResizableWidget], if any.
+  _RenderNavigatorResizable? renderNavigatorResizable;
+
+  /// The route content boundaries whose content still has to be measured.
+  ///
+  /// The [Overlay] lays out each route with a tight constraint, which makes
+  /// every route subtree a relayout boundary (see [RenderObject.layout]).
+  /// As a result, a content size change never propagates up to
+  /// [_RenderNavigatorResizable] through the layout tree walk. Instead,
+  /// [_RenderNavigatorResizable] drains this set from within its own
+  /// `performLayout`, so that the new content size is available in the same
+  /// frame in which it was reported.
+  ///
+  /// Membership doubles as the "needs to be measured" flag of a boundary:
+  /// entries are added by [_RenderRouteContentBoundary.markNeedsLayout] and
+  /// removed as soon as the boundary is laid out, no matter which of the two
+  /// code paths got it there.
+  final pendingMeasurements = <_RenderRouteContentBoundary>{};
+
   @override
   void initState() {
     super.initState();
@@ -185,11 +204,19 @@ class _NavigatorResizableState extends State<NavigatorResizable> {
       child: _InheritedNavigatorResizable(
         state: this,
         child: _RenderNavigatorResizableWidget(
+          state: this,
           preferredSize: _preferredSizeNotifier,
           child: widget.child,
         ),
       ),
     );
+  }
+
+  /// Remembers that [boundary] has to be measured, and makes sure the
+  /// [_RenderNavigatorResizable] is laid out in this frame so that it can.
+  void scheduleMeasurement(_RenderRouteContentBoundary boundary) {
+    pendingMeasurements.add(boundary);
+    renderNavigatorResizable?.requestRelayout();
   }
 
   void didRouteContentSizeChange(ModalRoute<dynamic> route, Size contentSize) {
@@ -219,15 +246,20 @@ class _InheritedNavigatorResizable extends InheritedWidget {
 
 class _RenderNavigatorResizableWidget extends SingleChildRenderObjectWidget {
   const _RenderNavigatorResizableWidget({
+    required this.state,
     required this.preferredSize,
     required super.child,
   });
 
+  final _NavigatorResizableState state;
   final ValueListenable<Size> preferredSize;
 
   @override
   RenderObject createRenderObject(BuildContext context) {
-    return _RenderNavigatorResizable(preferredSize: preferredSize);
+    return _RenderNavigatorResizable(
+      state: state,
+      preferredSize: preferredSize,
+    );
   }
 
   @override
@@ -241,14 +273,19 @@ class _RenderNavigatorResizableWidget extends SingleChildRenderObjectWidget {
 
 class _RenderNavigatorResizable extends RenderAligningShiftedBox {
   _RenderNavigatorResizable({
+    required _NavigatorResizableState state,
     required ValueListenable<Size> preferredSize,
-  }) : _preferredSize = preferredSize,
+  }) : _state = state,
+       _preferredSize = preferredSize,
        super(
          alignment: Alignment.topLeft,
          textDirection: null,
        ) {
+    state.renderNavigatorResizable = this;
     preferredSize.addListener(_onPreferredSizeChanged);
   }
+
+  final _NavigatorResizableState _state;
 
   @override
   bool get sizedByParent => false;
@@ -269,20 +306,53 @@ class _RenderNavigatorResizable extends RenderAligningShiftedBox {
     }
   }
 
-  void _onPreferredSizeChanged() {
-    switch (SchedulerBinding.instance.schedulerPhase) {
-      // If the change is triggered during the layout phase,
-      // it's too late to apply the new size to this render box
-      // in the current frame. Instead, we schedule a new frame
-      // to ensure the new size is eventually applied in the
-      // following frame.
-      case SchedulerPhase.persistentCallbacks:
-        SchedulerBinding.instance.scheduleFrameCallback((_) {
-          if (!_disposed) markNeedsLayout();
-        });
-      // Otherwise, schedule a layout immediately.
-      case _:
-        markNeedsLayout();
+  void _onPreferredSizeChanged() => requestRelayout();
+
+  /// Whether [performLayout] is currently measuring the route contents.
+  ///
+  /// While this is true, this render box is inside its own
+  /// [RenderObject.invokeLayoutCallback] window and has not computed its
+  /// [size] yet, so any content size reported during that window is picked
+  /// up by the very same layout pass.
+  bool _measuring = false;
+
+  /// Marks this render box as needing layout because the preferred size may
+  /// have changed.
+  ///
+  /// Safe to call from any scheduler phase.
+  void requestRelayout() {
+    if (_measuring) {
+      // We are inside our own invokeLayoutCallback window. The new content
+      // size is folded into `size` before performLayout returns, so there is
+      // nothing left to schedule. Calling markNeedsLayout here would be a
+      // no-op anyway: RenderObject.markParentNeedsLayout does not notify the
+      // parent while a layout callback is running.
+      return;
+    }
+
+    // [RenderObject.markNeedsLayout] asserts that no unrelated render subtree
+    // is actively performing layout. That holds in the common case, where the
+    // route content is dirtied during the build phase, but not when it is
+    // dirtied from within some other render object's performLayout, e.g. by a
+    // LayoutBuilder inside the route content.
+    //
+    // In release builds, marking ourselves dirty is safe even then, because
+    // [PipelineOwner.flushLayout] keeps draining its dirty list and therefore
+    // lays out nodes dirtied mid-pass in the same frame. Only the debug assert
+    // needs to be avoided, so this deliberately falls back to the next frame in
+    // debug builds only.
+    var mayMarkNeedsLayoutNow = true;
+    assert(() {
+      mayMarkNeedsLayoutNow = !(owner?.debugDoingLayout ?? false);
+      return true;
+    }());
+
+    if (mayMarkNeedsLayoutNow) {
+      markNeedsLayout();
+    } else {
+      SchedulerBinding.instance.scheduleFrameCallback((_) {
+        if (!_disposed) markNeedsLayout();
+      });
     }
   }
 
@@ -292,6 +362,9 @@ class _RenderNavigatorResizable extends RenderAligningShiftedBox {
   void dispose() {
     assert(!_disposed);
     _preferredSize.removeListener(_onPreferredSizeChanged);
+    if (_state.renderNavigatorResizable == this) {
+      _state.renderNavigatorResizable = null;
+    }
     _disposed = true;
     super.dispose();
   }
@@ -328,9 +401,38 @@ class _RenderNavigatorResizable extends RenderAligningShiftedBox {
       '$constraints (from parent: ${parent.runtimeType}).',
     );
 
-    // Pass the parent constraints directly to the child Navigator,
-    // allowing it to overflow this render box if necessary.
-    child!.layout(constraints, parentUsesSize: true);
+    // Measure the route contents *before* computing our own size, so that a
+    // content size change is reflected in the same frame it is reported.
+    //
+    // invokeLayoutCallback opens a window in which dirtying nodes outside of
+    // our own subtree is permitted, and in which nodes dirtied by the
+    // measurement are merged back into the current PipelineOwner.flushLayout
+    // pass instead of being deferred to the next frame.
+    _measuring = true;
+    try {
+      invokeLayoutCallback<BoxConstraints>((constraints) {
+        // Pass the parent constraints directly to the child Navigator,
+        // allowing it to overflow this render box if necessary.
+        child!.layout(constraints, parentUsesSize: true);
+        // Every route subtree is a relayout boundary, because the Overlay
+        // lays it out with a tight constraint. The tree walk above therefore
+        // skips route contents whose size changed without the Overlay itself
+        // being dirty, so drive those boundaries directly. This mirrors how
+        // _RenderLayoutSurrogateProxyBox drives _RenderDeferredLayoutBox in
+        // the framework's own OverlayPortal implementation.
+        //
+        // Draining rather than iterating keeps this correct even if measuring
+        // a boundary schedules another one; measureFromNavigatorResizable
+        // always removes itself first, so the loop is guaranteed to terminate.
+        final pending = _state.pendingMeasurements;
+        while (pending.isNotEmpty) {
+          pending.first.measureFromNavigatorResizable();
+        }
+      });
+    } finally {
+      _measuring = false;
+    }
+
     size = computeDryLayout(constraints);
     _visibleBounds = Offset.zero & size;
     alignChild();
@@ -381,6 +483,7 @@ class ResizableNavigatorRouteContentBoundary
     final parentRoute = ModalRoute.of(context)!;
     final navigatorResizable = _NavigatorResizableState.of(context);
     return _RenderRouteContentBoundary(
+      state: navigatorResizable,
       didRouteContentSizeChangeCallback: (size) {
         navigatorResizable.didRouteContentSizeChange(parentRoute, size);
       },
@@ -392,21 +495,80 @@ class ResizableNavigatorRouteContentBoundary
     final parentRoute = ModalRoute.of(context)!;
     final navigatorResizable = _NavigatorResizableState.of(context);
     (renderObject as _RenderRouteContentBoundary)
-        .didRouteContentSizeChangeCallback = (size) {
-      navigatorResizable.didRouteContentSizeChange(parentRoute, size);
-    };
+      ..state = navigatorResizable
+      ..didRouteContentSizeChangeCallback = (size) {
+        navigatorResizable.didRouteContentSizeChange(parentRoute, size);
+      };
   }
 }
 
 class _RenderRouteContentBoundary extends RenderPositionedBox {
   _RenderRouteContentBoundary({
+    required _NavigatorResizableState state,
     required this.didRouteContentSizeChangeCallback,
-  }) : super(alignment: Alignment.topLeft);
+  }) : _state = state,
+       super(alignment: Alignment.topLeft);
 
   ValueSetter<Size> didRouteContentSizeChangeCallback;
 
+  _NavigatorResizableState _state;
+  // ignore: avoid_setters_without_getters
+  set state(_NavigatorResizableState value) {
+    if (value == _state) return;
+    final wasPending = _state.pendingMeasurements.remove(this);
+    _state = value;
+    if (wasPending) {
+      _state.scheduleMeasurement(this);
+    }
+  }
+
+  @override
+  void detach() {
+    _state.pendingMeasurements.remove(this);
+    super.detach();
+  }
+
+  @override
+  void markNeedsLayout() {
+    // The Overlay lays this boundary out with a tight constraint, making it a
+    // relayout boundary: the dirt stops right here and never reaches the
+    // ancestor NavigatorResizable. Enqueue ourselves and dirty it explicitly,
+    // so that it is laid out in this very frame, at its own (shallower) depth,
+    // and can measure us before computing its size. Without this the new size
+    // would only be applied one frame later.
+    _state.scheduleMeasurement(this);
+    super.markNeedsLayout();
+  }
+
+  // performLayout may be driven by the ancestor NavigatorResizable rather than
+  // by our parent, so the framework's mutation asserts have to know about it.
+  @override
+  RenderObject? get debugLayoutParent {
+    RenderObject? layoutParent;
+    assert(() {
+      layoutParent = _state.renderNavigatorResizable ?? parent;
+      return true;
+    }());
+    return layoutParent;
+  }
+
+  /// Re-measures the content from within [_RenderNavigatorResizable]'s
+  /// `performLayout`, for the frames in which the layout tree walk does not
+  /// reach this boundary.
+  void measureFromNavigatorResizable() {
+    // Dequeue first: [RenderObject.layout] returns early without calling
+    // performLayout when the framework's dirty flag was already cleared, and
+    // the caller relies on this method always making progress.
+    _state.pendingMeasurements.remove(this);
+    if (!hasSize) {
+      return;
+    }
+    layout(constraints, parentUsesSize: true);
+  }
+
   @override
   void performLayout() {
+    _state.pendingMeasurements.remove(this);
     super.performLayout();
     if (child?.size case final childSize?) {
       didRouteContentSizeChangeCallback(

@@ -1284,23 +1284,17 @@ void main() {
         await tester.pumpWidget(env.testWidget);
         expect(env.getBoxSize(), const Size(100, 200));
 
+        // The new content size is applied within the same frame: the
+        // NavigatorResizable measures the route content boundaries from
+        // within its own performLayout, before computing its own size.
+
         // Make it bigger.
         env.setContentSize(const Size(200, 300));
-        // It *intentionally* takes two frames to update the size because:
-        // in the first frame, the route content size is updated,
-        // but we can't mark the render object of the NavigatorResizable
-        // as dirty in the layout phase of the same frame. Instead,
-        // we have to schedule the next frame to reflect the new content size
-        // to the size of the NavigatorResizable.
-        await tester.pump();
-        expect(env.getBoxSize(), const Size(100, 200));
         await tester.pump();
         expect(env.getBoxSize(), const Size(200, 300));
 
         // Make it smaller.
         env.setContentSize(const Size(50, 100));
-        await tester.pump();
-        expect(env.getBoxSize(), const Size(200, 300));
         await tester.pump();
         expect(env.getBoxSize(), const Size(50, 100));
       },
