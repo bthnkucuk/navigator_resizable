@@ -20,20 +20,41 @@ class NavigatorSizeNotifier extends ChangeNotifier
   Route<dynamic>? _currentRoute;
 
   void _updateInterpolation(Animation<Size?>? newValue) {
-    _interpolation?.removeListener(notifyListeners);
-    _interpolation = newValue?..addListener(notifyListeners);
+    _interpolation?.removeListener(_notifyIfChanged);
+    _interpolation = newValue?..addListener(_notifyIfChanged);
     if (newValue != null) {
       _currentRoute = null;
     }
   }
 
   void _updateCurrentRoute(Route<dynamic>? newRoute) {
-    final oldSize = value;
     _currentRoute = newRoute;
     if (newRoute != null) {
       _updateInterpolation(null);
     }
-    if (value != oldSize) {
+    _notifyIfChanged();
+  }
+
+  Size? _lastNotifiedValue;
+
+  /// Notifies the listeners only when [value] actually changed since the last
+  /// notification.
+  ///
+  /// The interpolation ticks on every frame of a route transition, but the
+  /// interpolated size only moves when the two routes have different content
+  /// sizes. Since [NavigatorResizable] is not a relayout boundary, notifying
+  /// unconditionally would lay out and repaint it and its ancestors on every
+  /// frame of a transition that cannot change anything on screen. The package
+  /// documentation recommends sizing route content with `double.infinity`, so
+  /// equal-size transitions are a common case rather than an exotic one.
+  ///
+  /// Comparing against the last *notified* value rather than the value at the
+  /// start of the current call also means the listeners can never drift away
+  /// from the real size.
+  void _notifyIfChanged() {
+    final newValue = value;
+    if (newValue != _lastNotifiedValue) {
+      _lastNotifiedValue = newValue;
       notifyListeners();
     }
   }
@@ -77,11 +98,8 @@ class NavigatorSizeNotifier extends ChangeNotifier
   /// its child widget changes.
   void didRouteContentSizeChange(Route<dynamic> route, Size contentSize) {
     assert(_routeContentSizes.containsKey(route));
-    final oldPreferredSize = value;
     _routeContentSizes[route] = contentSize;
-    if (value != oldPreferredSize) {
-      notifyListeners();
-    }
+    _notifyIfChanged();
   }
 
   @override
