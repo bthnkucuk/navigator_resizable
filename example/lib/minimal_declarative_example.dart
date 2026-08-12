@@ -20,6 +20,7 @@ class _ExampleHomeState extends State<ExampleHome> {
       title: 'Page A',
       size: Size(280, 160),
       color: Colors.blue,
+      borderRadius: 16,
     ),
   );
 
@@ -29,6 +30,7 @@ class _ExampleHomeState extends State<ExampleHome> {
       title: 'Page B',
       size: Size(320, 220),
       color: Colors.green,
+      borderRadius: 4,
     ),
   );
 
@@ -38,6 +40,7 @@ class _ExampleHomeState extends State<ExampleHome> {
       title: 'Page C',
       size: Size(360, 280),
       color: Colors.red,
+      borderRadius: 24,
     ),
   );
 
@@ -47,6 +50,7 @@ class _ExampleHomeState extends State<ExampleHome> {
       title: 'Page D',
       size: Size(300, 200),
       color: Colors.yellow,
+      borderRadius: 80,
     ),
   );
 
@@ -86,7 +90,7 @@ class _ExampleHomeState extends State<ExampleHome> {
                     type: MaterialType.transparency,
                     color: Colors.transparent,
                     clipBehavior: Clip.hardEdge,
-                    borderRadius: BorderRadius.circular(8),
+
                     // IMPORTANT: Wrap the Navigator in a NavigatorResizable.
                     child: NavigatorResizable(
                       child: Navigator(
@@ -138,11 +142,13 @@ class _ExampleRouteContent extends StatelessWidget {
     required this.title,
     required this.size,
     required this.color,
+    this.borderRadius = 16,
   });
 
   final String title;
   final Size size;
   final Color color;
+  final double borderRadius;
 
   @override
   Widget build(BuildContext context) {
@@ -152,7 +158,7 @@ class _ExampleRouteContent extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(borderRadius),
       ),
       child: Text(
         title,
