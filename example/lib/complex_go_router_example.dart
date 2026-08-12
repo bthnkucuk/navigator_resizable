@@ -125,7 +125,7 @@ class Home extends StatelessWidget {
       resizeToAvoidBottomInset: false,
       body: Center(
         child: TextButton(
-          onPressed: () => context.go('/A'),
+          onPressed: () => context.go('/a'),
           child: const Text('Open Dialog'),
         ),
       ),

@@ -50,7 +50,7 @@ import 'resizable_navigator_routes.dart';
 /// ResizableMaterialPageRoute(
 ///   builder: (context) {
 ///     return Container(
-///       color: Colors.while,
+///       color: Colors.white,
 ///       width: double.infinity,
 ///       height: double.infinity,
 ///     );
@@ -64,19 +64,37 @@ import 'resizable_navigator_routes.dart';
 /// [ResizableNavigatorRouteContentBoundary] in [ModalRoute.buildPage].
 ///
 /// ```dart
-/// class CustomResizableRoute<T> extends ModalRoute<T>
-///   with ObservableRouteMixin<T>{
-///   CustomResizableRoute({
-///     required super.builder,
-///     ...
-///   });
+/// class CustomResizableRoute<T> extends PageRoute<T>
+///     with ObservableRouteMixin<T> {
+///   CustomResizableRoute({required this.builder});
+///
+///   final WidgetBuilder builder;
 ///
 ///   @override
-///   Widget buildContent(BuildContext context) {
+///   Widget buildPage(
+///     BuildContext context,
+///     Animation<double> animation,
+///     Animation<double> secondaryAnimation,
+///   ) {
 ///     return ResizableNavigatorRouteContentBoundary(
 ///       child: builder(context),
 ///     );
 ///   }
+///
+///   @override
+///   Duration get transitionDuration => const Duration(milliseconds: 300);
+///
+///   @override
+///   bool get maintainState => true;
+///
+///   @override
+///   bool get barrierDismissible => false;
+///
+///   @override
+///   Color? get barrierColor => null;
+///
+///   @override
+///   String? get barrierLabel => null;
 /// }
 /// ```
 ///
